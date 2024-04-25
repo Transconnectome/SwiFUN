@@ -257,8 +257,6 @@ class fMRIDataModule(pl.LightningDataModule):
         params = {
                 "root": self.hparams.image_path,
                 "sequence_length": self.hparams.sequence_length,
-                "contrastive":self.hparams.use_contrastive,
-                "contrastive_type":self.hparams.contrastive_type,
                 "stride_between_seq": self.hparams.stride_between_seq,
                 "stride_within_seq": self.hparams.stride_within_seq,
                 "with_voxel_norm": self.hparams.with_voxel_norm,

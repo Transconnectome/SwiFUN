@@ -4,14 +4,14 @@
 #SBATCH -c 8
 #SBATCH --ntasks-per-node=2
 #SBATCH --gpus-per-node=2
-#SBATCH --chdir=/global/cfs/cdirs/m4244/junbeom/SwiFUN_v2 
+#SBATCH --chdir=/global/cfs/cdirs/m4244/junbeom/SwiFUN
 #SBATCH --nodelist=node1
 #SBATCH --output=R-%j-%x.out
 set +x
 
-export NEPTUNE_API_TOKEN="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI1ZmQ4ZjYxZS02Zjk2LTQ5Y2EtYmZlNC0zOWZjNzM3MjNjYzYifQ=="
+export NEPTUNE_API_TOKEN="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4ZWNlMzk4Ny1hOTVlLTRjMzgtOWI4ZS1hY2FkYTY4MzNhYzMifQ=="
 
-cd /global/cfs/cdirs/m4244/junbeom/SwiFUN_v2 
+cd /global/cfs/cdirs/m4244/junbeom/SwiFUN 
 
 #source /usr/anaconda3/etc/profile.d/conda.sh
 #conda activate py39
@@ -20,9 +20,9 @@ module load pytorch/1.13.1
 module load cpe/23.03
 
 TRAINER_ARGS="--accelerator gpu --max_epochs 20 --precision 16 --num_nodes 1 --devices 1" # --strategy ddp_find_unused_parameters_false" #--strategy ddp_find_unused_parameters_false" # devices should be 4 for sbatch
-MAIN_ARGS='--loggername neptune --classifier_module v6 --dataset_name UKB_v3 --image_path  /pscratch/sd/j/junbeom/UKB_20227_3_MNI_to_TRs --task_path /pscratch/sd/j/junbeom/3.task_fMRI/20249_3_MNI --mask_filename Schaefer2018_100Parcels_7Networks_order_FSLMNI152_2mm.nii.gz' #--mask_filename harvard_oxford-wholebrain-maxprob-thr25-2mm.nii.gz' # /global/cfs/cdirs/m4244/junbeom/20249_pickled_map
-DATA_ARGS='--batch_size 2 --eval_batch_size 16 --num_workers 8'
-DEFAULT_ARGS='--project_name symoon-ConnectomeLab/SwiFUN-v2'
+MAIN_ARGS='--loggername neptune --dataset_name UKB_v3 --image_path  /pscratch/sd/j/junbeom/UKB_20227_3_MNI_to_TRs --task_path /pscratch/sd/j/junbeom/3.task_fMRI/20249_3_MNI --mask_filename Schaefer2018_100Parcels_7Networks_order_FSLMNI152_2mm.nii.gz' #--mask_filename harvard_oxford-wholebrain-maxprob-thr25-2mm.nii.gz' # /global/cfs/cdirs/m4244/junbeom/20249_pickled_map
+DATA_ARGS='--batch_size 4 --eval_batch_size 16 --num_workers 8'
+DEFAULT_ARGS='--project_name kjb961013/rs-to-task'
 OPTIONAL_ARGS='--cope 1 --c_multiplier 2 --clf_head_version v1 --downstream_task tfMRI_3D --use_scheduler --gamma 0.5 --cycle 0.7 --loss_type mse --last_layer_full_MSA True --input_scaling_method minmax'
 RESUME_ARGS="" 
 
