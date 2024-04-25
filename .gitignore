@@ -1,0 +1,10 @@
+__pycache__/
+data/
+predictions/
+
+# slurm output
+*.slurm.out 
+
+# neptune
+.neptune/
+config.yaml
