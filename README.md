@@ -186,5 +186,13 @@ The resulting data structure is as follows:
 
 ### Citation   
 ```
+@article{kwon2024predicting,
+  title={Predicting task-related brain activity from resting-state brain dynamics with fMRI Transformer},
+  author={Kwon, Junbeom and Seo, Jungwoo and Wang, Heehwan and Moon, Taesup and Yoo, Shinjae and Cha, Jiook},
+  journal={bioRxiv},
+  pages={2024--05},
+  year={2024},
+  publisher={Cold Spring Harbor Laboratory}
+}
 ```   
 
