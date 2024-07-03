@@ -112,14 +112,26 @@ class S1200(BaseDataset):
         # target = self.label_dict[target] if isinstance(target, str) else target.float()
         y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
 
+        if self.downstream_task == 'tfMRI':
+                target = torch.load(target) # 1D ndarray
+                # (91, 109, 91) -> (number of valid voxels)
+        elif self.downstream_task == 'tfMRI_3D':
+            target = torch.tensor(nb.load(target).get_fdata()) # 3D tensor
+            background_value = target.flatten()[0]
+            target = torch.nn.functional.pad(target, (3, 2, -7, -6, 3, 2), value=background_value) # 96, 96, 96
+
         background_value = y.flatten()[0]
         y = y.permute(0,4,1,2,3) 
         y = torch.nn.functional.pad(y, (3, 9, 0, 0, 10, 8), value=background_value) # adjust this padding level according to your data 
+        # y = torch.nn.functional.pad(y, (3, 2, -7, -6, 3, 2), value=background_value) # Swifun
         y = y.permute(0,2,3,4,1) 
 
-        return {
+        if self.time_as_channel:
+            y = y.permute(0,4,1,2,3).squeeze()
+
+        return_dict = {
             "fmri_sequence": y,
-            "subject_name": subject,
+            "subject_name": subject_name,
             "target": target,
             "TR": start_frame,
             "sex": sex,

@@ -137,39 +137,58 @@ class fMRIDataModule(pl.LightningDataModule):
             if self.hparams.downstream_task == 'sex': task_name = 'Gender'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
             elif self.hparams.downstream_task == 'int_total': task_name = 'CogTotalComp_AgeAdj'
-            elif self.hparams.downstream_task.startswith('WM_'): task_name = self.downstream_task # WM_Task_Median_RT, WM_Task_Acc # not in swifun
+            elif self.hparams.downstream_task == 'tfMRI' : task_name = 'tfMRI'
+            elif self.hparams.downstream_task == 'tfMRI_3D' : task_name = 'tfMRI_3D'
             else: raise NotImplementedError()
-
-            if self.hparams.downstream_task == 'sex':
-                meta_task = meta_data[['Subject',task_name]].dropna()
-            elif self.hparams.downstream_task == 'age':
-                meta_task = meta_data_residual[['subject',task_name,'sex']].dropna()
-                #rename column subject to Subject
-                meta_task = meta_task.rename(columns={'subject': 'Subject'})
-            elif self.hparams.downstream_task == 'int_total':
-                meta_task = meta_data[['Subject',task_name,'Gender']].dropna()  
-            elif self.hparams.downstream_task.startswith('WM_'):
-                meta_task = meta_data_all[['Subject',task_name,'Gender']].dropna()
             
-            for subject in subject_list:
-                if int(subject) in meta_task['Subject'].values:
-                    if self.hparams.downstream_task == 'sex':
-                        target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
-                        target = 1 if target == "M" else 0
-                        sex = target
-                    elif self.hparams.downstream_task == 'age':
-                        target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
-                        sex = meta_task[meta_task["Subject"]==int(subject)]["sex"].values[0]
-                        sex = 1 if sex == "M" else 0
-                    elif self.hparams.downstream_task == 'int_total':
-                        target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
-                        sex = meta_task[meta_task["Subject"]==int(subject)]["Gender"].values[0]
-                        sex = 1 if sex == "M" else 0
-                    elif self.hparams.downstream_task.startswith('WM_'):
-                        target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
-                        sex = meta_task[meta_task["Subject"]==int(subject)]["Gender"].values[0]
-                        sex = 1 if sex == "M" else 0
-                    final_dict[subject]=[sex,target]
+            if 'tfMRI' in task_name: 
+                beta_map_list = os.listdir(task_path)
+
+                for subject in subject_list:
+                    subject_name = subject
+                    # subject_name : XXXXXX (6 digits)
+                    if subject_name in beta_map_list:
+                        if task_name == 'tfMRI_3D':
+                            if self.hparams.contrast_motion_corrected:
+                                motion_type = '1st_lev_with_motion_conf'
+                            else:
+                                motion_type = '1st_lev_event_only'
+                            target_path =  os.path.join(task_path, subject_name,f'{subject_name}_{os.path.basename(task_path)}_{motion_type}_{cope}.nii.gz')
+                            sex=0 # dummy variable, since we do not need this variable
+                            if not os.path.exists(target_path):
+                                continue
+                            final_dict[subject]=[sex,target_path]
+                        elif task_name == 'tfMRI':
+                            raise NotImplementedError
+            else:
+                if self.hparams.downstream_task == 'sex':
+                    meta_task = meta_data[['Subject',task_name]].dropna()
+                elif self.hparams.downstream_task == 'age':
+                    meta_task = meta_data_residual[['subject',task_name,'sex']].dropna()
+                    #rename column subject to Subject
+                    meta_task = meta_task.rename(columns={'subject': 'Subject'})
+                elif self.hparams.downstream_task == 'int_total':
+                    meta_task = meta_data[['Subject',task_name,'Gender']].dropna()  
+
+                for subject in subject_list:
+                    if int(subject) in meta_task['Subject'].values:
+                        if self.hparams.downstream_task == 'sex':
+                            target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
+                            target = 1 if target == "M" else 0
+                            sex = target
+                        elif self.hparams.downstream_task == 'age':
+                            target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
+                            sex = meta_task[meta_task["Subject"]==int(subject)]["sex"].values[0]
+                            sex = 1 if sex == "M" else 0
+                        elif self.hparams.downstream_task == 'int_total':
+                            target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
+                            sex = meta_task[meta_task["Subject"]==int(subject)]["Gender"].values[0]
+                            sex = 1 if sex == "M" else 0
+                        elif self.hparams.downstream_task.startswith('WM_'):
+                            target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
+                            sex = meta_task[meta_task["Subject"]==int(subject)]["Gender"].values[0]
+                            sex = 1 if sex == "M" else 0
+                        final_dict[subject]=[sex,target]
 
         elif self.hparams.dataset_name == "ABCD":
             subject_list = [subj[4:] for subj in os.listdir(img_root)]
@@ -350,8 +369,8 @@ class fMRIDataModule(pl.LightningDataModule):
         group.add_argument("--sequence_length", type=int, default=30)
         group.add_argument("--eval_batch_size", type=int, default=16)
         group.add_argument("--img_size", nargs="+", default=[96, 96, 96, 20], type=int, help="image size (adjust the fourth dimension according to your --sequence_length argument)")
-        group.add_argument("--stride_between_seq", type=int, default=1, help="skip some fMRI volumes between fMRI sub-sequences")
-        group.add_argument("--stride_within_seq", type=int, default=1, help="skip some fMRI volumes within fMRI sub-sequences")
+        group.add_argument("--stride_between_seq", type=float, default=1, help="skip some fMRI volumes between fMRI sub-sequences")
+        group.add_argument("--stride_within_seq", type=float, default=1, help="skip some fMRI volumes within fMRI sub-sequences")
         group.add_argument("--num_workers", type=int, default=8)
         group.add_argument("--with_voxel_norm", type=str2bool, default=False)
         group.add_argument("--from_jeongbo", action='store_true')
