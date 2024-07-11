@@ -242,7 +242,6 @@ class fMRIDataModule(pl.LightningDataModule):
             else: raise ValueError('downstream task not supported')
 
             if 'tfMRI' in task_name:    
-
                 beta_map_list = [subj[:7] for subj in os.listdir(self.hparams.task_path) if subj.endswith('20249_2_0')]
                 subject_list = [subj for subj in os.listdir(img_root) if subj.endswith('20227_2_0')]
                 for subject in subject_list:
@@ -285,7 +284,10 @@ class fMRIDataModule(pl.LightningDataModule):
                 "input_scaling_method" : self.hparams.input_scaling_method,
                 "label_scaling_method" : self.hparams.label_scaling_method,
                 "dtype":'float16', 
-                "time_as_channel": self.hparams.time_as_channel} 
+                "time_as_channel": self.hparams.time_as_channel,
+                "use_ic": self.hparams.use_ic,
+                "input_features_path": self.hparams.input_features_path,
+                "input_mask_path": self.hparams.input_mask_path} 
 
         subject_dict = self.make_subject_dict()
         if os.path.exists(self.split_file_path):
@@ -377,4 +379,8 @@ class fMRIDataModule(pl.LightningDataModule):
         group.add_argument("--shuffle_time_sequence", action='store_true')
         group.add_argument("--time_as_channel", action='store_true')
         group.add_argument("--limit_training_samples", type=int, default=None, help="use if you want to limit training samples")
+        
+        group.add_argument("--use_ic", action='store_true')
+        group.add_argument("--input_features_path", type=str, default="default")
+        group.add_argument("--input_mask_path", type=str, default="default")
         return parser

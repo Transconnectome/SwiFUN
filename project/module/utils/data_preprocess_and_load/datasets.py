@@ -208,43 +208,84 @@ class UKB(BaseDataset):
 
     def _set_data(self, root, subject_dict):
         data = []
-        img_root = os.path.join(root, 'img')
-        # subject_list = [subj for subj in os.listdir(img_root) if subj.endswith('20227_2_0')] # only use release 2
-
-        for i, subject_name in enumerate(subject_dict):
-            sex, target = subject_dict[subject_name]
-            subject20227 = str(subject_name)+'_20227_2_0'
-            subject_path = os.path.join(img_root, subject20227)
-            num_frames = len(glob.glob(os.path.join(subject_path,'frame_*'))) # voxel mean & std
-            session_duration = num_frames - self.sample_duration + 1
-
-            for start_frame in range(0, session_duration, self.stride):
-                data_tuple = (i, subject_name, subject_path, start_frame, self.sample_duration, num_frames, target, sex)
+        if self.use_ic:
+            for i, subject_name in enumerate(subject_dict):
+                sex, target = subject_dict[subject_name]
+                subject20227 = str(subject_name)+f'_20227_2_0_features_{self.sequence_length}_comps.npy'
+                subject_path = os.path.join(self.input_features_path, subject20227)
+                input_mask_path = self.input_mask_path
+                start_frame = 0
+                data_tuple = (i, subject_name, subject_path, start_frame, target, sex, input_mask_path) 
                 data.append(data_tuple)
+            # train dataset
+            # for regression tasks
+            if self.train: 
+                self.target_values = np.array([tup[4] for tup in data]).reshape(-1, 1)
         
-        # train dataset
-        # for regression tasks
-        if self.train: 
-            self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
+        else:
+            img_root = os.path.join(root, 'img')
+            # subject_list = [subj for subj in os.listdir(img_root) if subj.endswith('20227_2_0')] # only use release 2
+
+            for i, subject_name in enumerate(subject_dict):
+                sex, target = subject_dict[subject_name]
+                subject20227 = str(subject_name)+'_20227_2_0'
+                subject_path = os.path.join(img_root, subject20227)
+                num_frames = len(glob.glob(os.path.join(subject_path,'frame_*'))) # voxel mean & std
+                session_duration = num_frames - self.sample_duration + 1
+
+                for start_frame in range(0, session_duration, self.stride):
+                    data_tuple = (i, subject_name, subject_path, start_frame, self.sample_duration, num_frames, target, sex)
+                    data.append(data_tuple)
+
+            # train dataset
+            # for regression tasks
+            if self.train: 
+                self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
 
         return data
 
     def __getitem__(self, index):
-        _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
-        y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
+        if self.use_ic:
+            _, subject_name, subject_path, start_frame, target, sex, input_mask_path = self.data[index]
+            features = np.load(subject_path) # ic * features
+            mask = nb.load(input_mask_path).get_fdata() 
+            non_zero_indices = np.nonzero(mask.flatten())[0]
+            num_ic = features.shape[0]
+            final_matrix = np.zeros((num_ic,) + mask.shape)
+            flat_final_matrix = final_matrix.reshape(num_ic, -1)
+            flat_final_matrix[:, non_zero_indices] = features
+            final_matrix = flat_final_matrix.reshape((num_ic,) + mask.shape)
+            y = torch.tensor(final_matrix)
+            
+            # padding
+            background_value = y.flatten()[0]
+            y = torch.nn.functional.pad(y, (3, 2, -7, -6, 3, 2), value=background_value) # ic, 96, 96, 96
+            y = y.permute(1,2,3,0).unsqueeze(0).half() # 1, 96, 96, 96, ic
+            
+            if self.downstream_task == 'tfMRI_3D':
+                target = torch.tensor(nb.load(target).get_fdata()) # 3D tensor
+                background_value = target.flatten()[0]
+                target = torch.nn.functional.pad(target, (3, 2, -7, -6, 3, 2), value=background_value)
+            
+            if self.time_as_channel:
+                y = y.permute(0,4,1,2,3).squeeze()
+            
+        else:
+            _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
+            y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
 
-        if self.downstream_task == 'tfMRI_3D':
-            target = torch.tensor(nb.load(target).get_fdata()) # 3D tensor
-            background_value = target.flatten()[0]
-            target = torch.nn.functional.pad(target, (3, 2, -7, -6, 3, 2), value=background_value) # 96, 96, 96
+            if self.downstream_task == 'tfMRI_3D':
+                target = torch.tensor(nb.load(target).get_fdata()) # 3D tensor
+                background_value = target.flatten()[0]
+                target = torch.nn.functional.pad(target, (3, 2, -7, -6, 3, 2), value=background_value) # 96, 96, 96
 
-        background_value = y.flatten()[0]
-        y = y.permute(0,4,1,2,3) 
-        y = torch.nn.functional.pad(y, (3, 9, 0, 0, 10, 8), value=background_value) # adjust this padding level according to your data 
-        y = y.permute(0,2,3,4,1) 
+            background_value = y.flatten()[0]
+            y = y.permute(0,4,1,2,3) 
+            y = torch.nn.functional.pad(y, (3, 9, 0, 0, 10, 8), value=background_value) # adjust this padding level according to your data 
+            y = y.permute(0,2,3,4,1) 
 
-        if self.time_as_channel:
-            y = y.permute(0,4,1,2,3).squeeze()
+            if self.time_as_channel:
+                y = y.permute(0,4,1,2,3).squeeze()
 
         return {
                     "fmri_sequence": y,

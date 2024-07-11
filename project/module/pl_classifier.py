@@ -12,6 +12,7 @@ import torchmetrics
 import torchmetrics.classification
 from torchmetrics.classification import BinaryAccuracy, BinaryAUROC, BinaryROC
 from torchmetrics import  PearsonCorrCoef # Accuracy,
+from torchmetrics.regression import R2Score
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_curve
 import monai.transforms as monai_t
 
@@ -356,8 +357,12 @@ class LitClassifier(pl.LightningModule):
                     adjusted_mae = F.l1_loss(subj_avg_logits * (self.scaler.data_max_[0] - self.scaler.data_min_[0]) + self.scaler.data_min_[0], subj_targets * (self.scaler.data_max_[0] - self.scaler.data_min_[0]) + self.scaler.data_min_[0])
                 pearson = PearsonCorrCoef().to(total_out.device)
                 prearson_coef = pearson(subj_avg_logits, subj_targets)
+                
+                r2score = R2Score()
+                r2_output = r2score(subj_avg_logits, subj_targets)
 
                 self.log(f"{mode}_corrcoef", prearson_coef, sync_dist=True)
+                self.log(f"{mode}_r2", r2_output, sync_dist=True)
                 self.log(f"{mode}_mse", mse, sync_dist=True)
                 self.log(f"{mode}_mae", mae, sync_dist=True)
                 self.log(f"{mode}_adjusted_mse", adjusted_mse, sync_dist=True) 
