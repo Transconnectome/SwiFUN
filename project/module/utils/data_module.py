@@ -52,7 +52,7 @@ class fMRIDataModule(pl.LightningDataModule):
         subj_idx = np.array([str(x[1]) for x in subj_list])
         S = np.unique([x[1] for x in subj_list])
         # print(S)
-        print('unique subjects:',len(S))  
+        # print('unique subjects:',len(S))  
         train_idx = np.where(np.in1d(subj_idx, train_names))[0].tolist()
         val_idx = np.where(np.in1d(subj_idx, val_names))[0].tolist()
         test_idx = np.where(np.in1d(subj_idx, test_names))[0].tolist()
@@ -191,7 +191,7 @@ class fMRIDataModule(pl.LightningDataModule):
                         final_dict[subject]=[sex,target]
 
         elif self.hparams.dataset_name == "ABCD":
-            subject_list = [subj[4:] for subj in os.listdir(img_root)]
+            subject_list = [subj for subj in os.listdir(img_root)]
             
             meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "ABCD_phenotype_total.csv"))
             if self.hparams.downstream_task == 'sex': task_name = 'sex'
@@ -214,6 +214,7 @@ class fMRIDataModule(pl.LightningDataModule):
                         if task_name == 'tfMRI_3D':
                             target_path =  os.path.join(self.hparams.task_path, subject_name,f'{subject_name}_{self.hparams.cope}.nii.gz')
                             sex=0 # dummy variable, since we do not need this variable
+                            
                             if not os.path.exists(target_path):
                                 continue
                             final_dict[subject]=[sex,target_path]
@@ -305,7 +306,6 @@ class fMRIDataModule(pl.LightningDataModule):
         
         if self.hparams.limit_training_samples:
             train_names = np.random.choice(train_names, size=self.hparams.limit_training_samples, replace=False, p=None)
-        
         train_dict = {key: subject_dict[key] for key in train_names if key in subject_dict}
         val_dict = {key: subject_dict[key] for key in val_names if key in subject_dict}
         test_dict = {key: subject_dict[key] for key in test_names if key in subject_dict}
