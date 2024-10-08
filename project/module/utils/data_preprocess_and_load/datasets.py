@@ -143,55 +143,87 @@ class ABCD(BaseDataset):
 
     def _set_data(self, root, subject_dict):
         data = []
-        img_root = os.path.join(root, 'img')
-
-        for i, subject_name in enumerate(subject_dict):
-            sex, target = subject_dict[subject_name]
-            # subject_name = subject[4:]
-            
-            subject_path = os.path.join(img_root, 'sub-'+subject_name)
-
-            num_frames = len(glob.glob(os.path.join(subject_path,'frame_*'))) # voxel mean & std
-            session_duration = num_frames - self.sample_duration + 1
-
-            for start_frame in range(0, session_duration, self.stride):
-                data_tuple = (i, subject_name, subject_path, start_frame, self.sample_duration, num_frames, target, sex) #? stride or sample_duration?
+        if self.use_ic:
+            for i, subject_name in enumerate(subject_dict):
+                sex, target = subject_dict[subject_name]
+                if self.sequence_length == 25:
+                    subject = 'sub-'+str(subject_name)+f'_features_{self.sequence_length}comp.npy'
+                else:
+                    subject = 'sub-'+str(subject_name)+f'_features_{self.sequence_length}_comp.npy'
+                
+                subject_path = os.path.join(self.input_features_path, subject)
+                input_mask_path = self.input_mask_path
+                start_frame = 0
+                data_tuple = (i, subject_name, subject_path, start_frame, target, sex, input_mask_path) 
+                if not os.path.exists(subject_path):
+                    continue
                 data.append(data_tuple)
-                        
-        
-        # train dataset
-        # for regression tasks
-        if self.train: 
-            self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
+            # train dataset
+            # for regression tasks
+            if self.train: 
+                self.target_values = np.array([tup[4] for tup in data]).reshape(-1, 1)
+                
+        else:    
+            img_root = os.path.join(root, 'img')
+
+            for i, subject_name in enumerate(subject_dict):
+                sex, target = subject_dict[subject_name]
+                # subject_name = subject[4:]
+
+                subject_path = os.path.join(img_root, subject_name) # NDAR-
+
+                num_frames = len(glob.glob(os.path.join(subject_path,'frame_*'))) # voxel mean & std
+                session_duration = num_frames - self.sample_duration + 1
+
+                for start_frame in range(0, session_duration, self.stride):
+                    data_tuple = (i, subject_name, subject_path, start_frame, self.sample_duration, num_frames, target, sex) #? stride or sample_duration?
+                    data.append(data_tuple)
+
+
+            # train dataset
+            # for regression tasks
+            if self.train: 
+                self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
 
         return data
 
     def __getitem__(self, index):
-        _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
-        #age = self.label_dict[age] if isinstance(age, str) else age.float()
+        if self.use_ic:
+            _, subject_name, subject_path, start_frame, target, sex, input_mask_path = self.data[index]
+            features = np.load(subject_path) # ic * features
+            mask = nb.load(input_mask_path).get_fdata() 
+            non_zero_indices = np.nonzero(mask.flatten())[0]
+            num_ic = features.shape[0]
+            final_matrix = np.zeros((num_ic,) + mask.shape)
+            flat_final_matrix = final_matrix.reshape(num_ic, -1) # IC * 99 * 117 * 95
+            flat_final_matrix[:, non_zero_indices] = features
+            final_matrix = flat_final_matrix.reshape((num_ic,) + mask.shape)
+            y = torch.tensor(final_matrix)
+            
+            # padding
+            background_value = y.flatten()[0]
+            y = torch.nn.functional.pad(y, (6, -5, -11, -10, -1, -2), value=background_value) # ic, 96, 96, 96
+            y = y.permute(1,2,3,0).unsqueeze(0).half() # 1, 96, 96, 96, ic
+            
+        else: # 4D fMRI input
+            _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
+            #age = self.label_dict[age] if isinstance(age, str) else age.float()
 
-        # resting or task
-        y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
+            y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)     
+            # padding
+            background_value = y.flatten()[0]
+            y = y.permute(0,4,1,2,3) 
+            y = torch.nn.functional.pad(y, (0, 1, 0, 0, 0, 0), value=background_value) # ic, 96, 96, 96
+            y = y.permute(0,2,3,4,1) 
+        
         if self.downstream_task == 'tfMRI_3D':
             target = torch.tensor(nb.load(target).get_fdata()) # 3D tensor
             background_value = target.flatten()[0]
-            target = torch.nn.functional.pad(target, (6, -5, -11, -10, -1, -2), value=background_value) # 96, 96, 96
-
-        background_value = y.flatten()[0]
-        y = y.permute(0,4,1,2,3)
-        if self.input_type == 'rest':
-            # ABCD rest image shape: 79, 97, 85
-            # latest version might be 96,96,95
-            y = torch.nn.functional.pad(y, (6, 5, 0, 0, 9, 8), value=background_value)[:,:,:,:96,:] # adjust this padding level according to your data
-        elif self.input_type == 'task':
-            # ABCD task image shape: 96, 96, 95
-            # background value = 0
-            # minmax scaled in brain (0~1)
-            y = torch.nn.functional.pad(y, (0, 1, 0, 0, 0, 0), value=background_value) # adjust this padding level according to your data
-        y = y.permute(0,2,3,4,1)
-
+            target = torch.nn.functional.pad(target, (6, -5, -11, -10, -1, -2), value=background_value)
+        
         if self.time_as_channel:
             y = y.permute(0,4,1,2,3).squeeze()
+        
 
         return {
             "fmri_sequence": y,
@@ -262,30 +294,24 @@ class UKB(BaseDataset):
             y = torch.nn.functional.pad(y, (3, 2, -7, -6, 3, 2), value=background_value) # ic, 96, 96, 96
             y = y.permute(1,2,3,0).unsqueeze(0).half() # 1, 96, 96, 96, ic
             
-            if self.downstream_task == 'tfMRI_3D':
-                target = torch.tensor(nb.load(target).get_fdata()) # 3D tensor
-                background_value = target.flatten()[0]
-                target = torch.nn.functional.pad(target, (3, 2, -7, -6, 3, 2), value=background_value)
-            
-            if self.time_as_channel:
-                y = y.permute(0,4,1,2,3).squeeze()
             
         else:
             _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
             y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
-
-            if self.downstream_task == 'tfMRI_3D':
-                target = torch.tensor(nb.load(target).get_fdata()) # 3D tensor
-                background_value = target.flatten()[0]
-                target = torch.nn.functional.pad(target, (3, 2, -7, -6, 3, 2), value=background_value) # 96, 96, 96
-
+            
+            # padding
             background_value = y.flatten()[0]
             y = y.permute(0,4,1,2,3) 
             y = torch.nn.functional.pad(y, (3, 9, 0, 0, 10, 8), value=background_value) # adjust this padding level according to your data 
             y = y.permute(0,2,3,4,1) 
-
-            if self.time_as_channel:
-                y = y.permute(0,4,1,2,3).squeeze()
+        
+        if self.downstream_task == 'tfMRI_3D':
+                target = torch.tensor(nb.load(target).get_fdata()) # 3D tensor
+                background_value = target.flatten()[0]
+                target = torch.nn.functional.pad(target, (3, 2, -7, -6, 3, 2), value=background_value) # 96, 96, 96
+                
+        if self.time_as_channel:
+            y = y.permute(0,4,1,2,3).squeeze()
 
         return {
                     "fmri_sequence": y,
